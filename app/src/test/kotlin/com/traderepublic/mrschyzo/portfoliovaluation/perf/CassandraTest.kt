@@ -15,7 +15,6 @@ import java.net.InetSocketAddress
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
-import java.util.Date
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
@@ -44,6 +43,7 @@ class CassandraTest: PerformanceTest() {
 
     override fun setup() = Unit
 
+    // Still flaky as test
     override fun writeAllDataPoints(dataPoints: Sequence<Pair<DataPoint, Resolution>>): Duration =
         stopwatch {
             val statement = session.prepareAsync("insert into pv.portfolio_valuation (user_id, resolution, time, amount) values (:user, :res, :time, :amount)")

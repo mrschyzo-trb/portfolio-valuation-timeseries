@@ -33,7 +33,7 @@ class PostgresTest: PerformanceTest() {
             "password"
         ).use { conn ->
             stopwatch {
-                dataPoints.chunked(2048).forEach { chunk ->
+                dataPoints.chunked(32*1024).forEach { chunk ->
                     conn.prepareStatement("insert into portfolio_valuation values (?,?,?,?)").use { batchStatement ->
                         chunk.forEach { (dataPoint, resolution) ->
                             batchStatement.setObject(1, dataPoint.userId)

@@ -55,7 +55,7 @@ abstract class PerformanceTest {
 
     private fun generateDataPoints(): List<Pair<DataPoint, Resolution>> {
         val now = Instant.now().truncatedTo(DAYS)
-        val userCount = 2
+        val userCount = 128
         val dataPointCount = 365 * 24 * 6
         val dataPoints = (0 until userCount)
             .map { UUID.randomUUID() }
