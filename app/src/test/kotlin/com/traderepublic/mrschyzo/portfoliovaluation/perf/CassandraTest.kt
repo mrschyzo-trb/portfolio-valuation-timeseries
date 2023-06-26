@@ -2,14 +2,12 @@ package com.traderepublic.mrschyzo.portfoliovaluation.perf
 
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.BatchStatement
-import com.datastax.oss.driver.api.core.cql.BatchStatementBuilder
 import com.datastax.oss.driver.api.core.cql.BatchType
 import com.traderepublic.mrschyzo.portfoliovaluation.utilities.DataPoint
 import com.traderepublic.mrschyzo.portfoliovaluation.utilities.Resolution
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.testcontainers.containers.CassandraContainer
-import org.testcontainers.containers.Network
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.net.InetSocketAddress
@@ -17,9 +15,8 @@ import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CompletionStage
-import kotlin.random.Random
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
 
 @Testcontainers
 class CassandraTest: PerformanceTest() {
@@ -71,19 +68,14 @@ class CassandraTest: PerformanceTest() {
         val inputs = users.flatMap { resolutions.map(it::to) }
         val now = Instant.now().plus(30, ChronoUnit.DAYS)
         return stopwatch {
-            val select = session.prepareAsync("select time, amount from pv.portfolio_valuation where user_id = :user and resolution = :res and time >= :start and time <= :end")
+            val select = session.prepare("select time, amount from pv.portfolio_valuation where user_id = :user and resolution = :res and time >= :start and time <= :end")
             inputs.forEach { (user, resolution) ->
-                select.thenApply {
-                    it.bind(
-                        user,
-                        resolution.label,
-                        now.minusNanos(resolution.duration.toNanos() * 150),
-                        now
-                    )
-                }.thenCompose(session::executeAsync)
-                .thenApply {
-                    it.currentPage().first().toString()
-                }.toCompletableFuture().get()
+                select.bind(
+                    user,
+                    resolution.label,
+                    now.minusNanos(resolution.duration.toNanos() * 150),
+                    now
+                ).let(session::execute).first().toString()
             }
         }.first
     }
