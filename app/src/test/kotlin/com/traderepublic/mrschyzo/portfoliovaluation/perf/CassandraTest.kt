@@ -9,6 +9,7 @@ import com.traderepublic.mrschyzo.portfoliovaluation.utilities.Resolution
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.testcontainers.containers.CassandraContainer
+import org.testcontainers.containers.Network
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import java.net.InetSocketAddress
@@ -17,10 +18,13 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionStage
+import kotlin.random.Random
 
 @Testcontainers
 class CassandraTest: PerformanceTest() {
     companion object {
+
         @Container
         private val cassandra = CassandraContainer("cassandra:4.1.2")
             .withInitScript("cassandra/init.cql")
@@ -31,8 +35,11 @@ class CassandraTest: PerformanceTest() {
     @BeforeEach
     fun setMeUp() {
         System.setProperty("datastax-java-driver.basic.request.timeout", "10 seconds")
-        session = CqlSession.builder()
-            .addContactPoint(InetSocketAddress(cassandra.host, cassandra.firstMappedPort))
+
+        session = listOf(cassandra)
+            .fold(CqlSession.builder()) { builder, cass ->
+                builder.addContactPoint(InetSocketAddress(cass.host, cass.firstMappedPort))
+            }
             .withLocalDatacenter("datacenter1")
             .build()
     }
@@ -44,28 +51,19 @@ class CassandraTest: PerformanceTest() {
 
     override fun setup() = Unit
 
-    // Still flaky as test
     override fun writeAllDataPoints(dataPoints: Sequence<Pair<DataPoint, Resolution>>): Duration =
         stopwatch {
-            val statement = session.prepareAsync("insert into pv.portfolio_valuation (user_id, resolution, time, amount) values (:user, :res, :time, :amount)")
-            dataPoints.chunked(200).map { chunk ->
-                val start = CompletableFuture.completedStage(BatchStatement.builder(BatchType.UNLOGGED))
+            val statement = session.prepare("insert into pv.portfolio_valuation (user_id, resolution, time, amount) values (:user, :res, :time, :amount)")
+            dataPoints.chunked(768).forEach { chunk ->
+                val start = BatchStatement.builder(BatchType.UNLOGGED)
                 chunk.fold(start) { builder, (point, res) ->
-                    statement.thenApply {
-                        it.bind(
-                            point.userId,
-                            res.label,
-                            point.timestamp,
-                            point.amount
-                        )
-                    }.thenCompose { bound ->
-                        builder.thenApply { it.addStatement(bound) }
-                    }
-                }.thenApply(BatchStatementBuilder::build)
-                .thenCompose(session::executeAsync)
-                .toCompletableFuture()
-            }.toList().toTypedArray().forEach {
-                it.get()
+                    statement.bind(
+                        point.userId,
+                        res.label,
+                        point.timestamp,
+                        point.amount
+                    ).let(builder::addStatement)
+                }.build().let { session.execute(it) }
             }
         }.first
 
