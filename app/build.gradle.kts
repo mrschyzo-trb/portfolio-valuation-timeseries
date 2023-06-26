@@ -10,8 +10,11 @@ dependencies {
     implementation(project(":utilities"))
 
     implementation("org.postgresql:postgresql:42.5.4")
-
     implementation("com.datastax.oss:java-driver-core:4.16.0")
+    implementation("com.scylladb:java-driver-core:4.15.0.0")
+    implementation("com.influxdb:influxdb-client-flux:6.9.0")
+    implementation("com.influxdb:influxdb-client-java:6.9.0")
+    implementation("com.taosdata.jdbc:taos-jdbcdriver:3.2.2")
 
     testImplementation("org.testcontainers:testcontainers:1.18.3")
     testImplementation("org.testcontainers:postgresql:1.18.3")
@@ -20,7 +23,6 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.9.2")
     testImplementation("org.testcontainers:junit-jupiter:1.18.3")
-
 }
 repositories {
     mavenCentral()

@@ -30,6 +30,7 @@ class CassandraTest: PerformanceTest() {
 
     @BeforeEach
     fun setMeUp() {
+        System.setProperty("datastax-java-driver.basic.request.timeout", "10 seconds")
         session = CqlSession.builder()
             .addContactPoint(InetSocketAddress(cassandra.host, cassandra.firstMappedPort))
             .withLocalDatacenter("datacenter1")
