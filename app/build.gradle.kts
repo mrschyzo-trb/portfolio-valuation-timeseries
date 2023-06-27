@@ -41,14 +41,14 @@ tasks {
         useJUnitPlatform()
 
         testLogging {
-            events("passed", "skipped", "failed", "standardError")
+            events("passed", "skipped", "failed", "standardError", "standardOut")
 
             showExceptions=true
             exceptionFormat=org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
             showCauses=true
             showStackTraces=true
 
-            showStandardStreams = false
+            showStandardStreams = true
         }
     }
 }

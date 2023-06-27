@@ -5,6 +5,7 @@ import com.traderepublic.mrschyzo.portfoliovaluation.utilities.Resolution
 import com.traderepublic.mrschyzo.portfoliovaluation.utilities.Resolution.Companion.resolution
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import java.math.BigDecimal
 import java.math.RoundingMode.HALF_UP
 import java.time.Duration
 import java.time.Instant
@@ -12,6 +13,7 @@ import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import java.time.temporal.ChronoUnit.DAYS
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit.MINUTES
 import kotlin.random.Random
 
@@ -23,35 +25,52 @@ abstract class PerformanceTest {
     @Test
     @Timeout(10, unit = MINUTES)
     fun `performance test`() {
-        val dataPoints = logActivity("💡Generating datapoints for users", ::generateDataPoints)
+        val dataPoints = logActivity("💡 Generating datapoints for users", ::generateDataPoints)
         val users = dataPoints.map { (point, _) -> point.userId }.distinct()
         val resolutions = Resolution.values().toList()
+        val combinations = users.size * resolutions.size
+        val readIncrease = 20U
 
-        logActivity("🛠️Setting up the test", ::setup)
+        logActivity("🛠️ Setting up the test", ::setup)
 
-        val writesPerSecond = logActivity("🤮Vomiting ${dataPoints.size} datapoints") {
-            writeAllDataPoints(dataPoints = dataPoints.asSequence())
-                .toNanos()
-                .let { dataPoints.size.toDouble() / it * 1_000_000_000 }
-                .toBigDecimal()
-                .setScale(2, HALF_UP)
+        val writesPerSecond = logActivity("🖋️ Writing ${dataPoints.size} datapoints") {
+            writesPerSecondBenchmark(dataPoints)
         }
-        val readsPerSecond = logActivity("😋Ingesting user datapoints (${users.size * resolutions.size} combinations)") {
-            val combos = users.size * resolutions.size
-            readAllUsersResolutions(users, resolutions)
-                .toNanos()
-                .let { combos.toDouble() / it * 1_000_000_000 }
-                .toBigDecimal()
-                .setScale(2, HALF_UP)
+        val readsPerSecond = logActivity("📖 Reading user datapoints ($combinations combinations)") {
+            readsPerSecondBenchmark(users, resolutions)
+        }
+        val (wps, rps) = logActivity("😵‍💫 Datapoints + reads in parallel (${dataPoints.size} writes + ${combinations * 20} reads)") {
+            val wps = CompletableFuture.supplyAsync { writesPerSecondBenchmark(dataPoints) }
+            val rps = CompletableFuture.supplyAsync { readsPerSecondBenchmark(users, resolutions * readIncrease) }
+
+            CompletableFuture.allOf(wps, rps).get()
+            wps.get() to rps.get()
         }
 
         println(
 """📊Results:
 🖋️ $writesPerSecond w/s
 📖 $readsPerSecond r/s
+😵‍💫 $wps w/s + $rps r/s
 """.trimIndent()
         )
     }
+
+    private fun readsPerSecondBenchmark(
+        users: List<UUID>,
+        resolutions: List<Resolution>
+    ): BigDecimal = readAllUsersResolutions(users, resolutions)
+        .toNanos()
+        .let { users.size * resolutions.size.toDouble() / it * 1_000_000_000 }
+        .toBigDecimal()
+        .setScale(2, HALF_UP)
+
+    private fun writesPerSecondBenchmark(dataPoints: List<Pair<DataPoint, Resolution>>): BigDecimal =
+        writeAllDataPoints(dataPoints = dataPoints.asSequence())
+            .toNanos()
+            .let { dataPoints.size.toDouble() / it * 1_000_000_000 }
+            .toBigDecimal()
+            .setScale(2, HALF_UP)
 
     private fun generateDataPoints(): List<Pair<DataPoint, Resolution>> {
         val now = Instant.now().truncatedTo(DAYS)
@@ -74,9 +93,8 @@ abstract class PerformanceTest {
         return dataPoints
     }
 
-    protected inline fun <T: Any> logActivity(message: String, block: () -> T): T {
-        print("$message...")
-        System.out.flush()
+    private inline fun <T: Any> logActivity(message: String, block: () -> T): T {
+        println("$message...")
         try {
             return block().also {
                 println("✅")
@@ -89,5 +107,10 @@ abstract class PerformanceTest {
     protected inline fun <T: Any> stopwatch(block: () -> T): Pair<Duration, T> =
         System.nanoTime().let { start ->
             block().let(Duration.ofNanos(System.nanoTime() - start)::to)
+        }
+
+    private operator fun <T> List<T>.times(times: UInt) =
+        (0 until times.toInt()).fold(this) { acc, _ ->
+            acc + this
         }
 }
